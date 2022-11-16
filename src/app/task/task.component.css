@@ -5,4 +5,19 @@
 .item {
   margin-bottom: 10px;
   cursor: pointer;
+  position: relative;
 }
+
+.item button {
+  position: absolute;
+  right: .5rem;
+  top: .5rem;
+  opacity: 0.3;
+  transition-property: opacity;
+  transition-duration: .3s;
+}
+
+.item button:hover {
+  opacity: 1;
+}
+

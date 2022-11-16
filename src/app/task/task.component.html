@@ -3,4 +3,7 @@
   <p>
     {{ task.description }}
   </p>
+  <button mat-mini-fab color="primary" aria-label="Edit" (click)="edit.emit(task)">
+    <mat-icon>edit</mat-icon>
+  </button>
 </mat-card>
