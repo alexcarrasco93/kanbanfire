@@ -1,29 +1,37 @@
-import { CdkDragDrop, transferArrayItem } from '@angular/cdk/drag-drop';
+import {
+  CdkDragDrop,
+  CdkDropList,
+  transferArrayItem,
+} from '@angular/cdk/drag-drop';
 import { Component } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
-import { TaskDialogComponent, TaskDialogResult } from './task-dialog/task-dialog.component';
+import {
+  TaskDialogComponent,
+  TaskDialogResult,
+} from './task-dialog/task-dialog.component';
 import { Task } from './task/task';
+import { AngularFirestore, AngularFirestoreCollection } from '@angular/fire/compat/firestore';
+import { BehaviorSubject, Observable } from 'rxjs';
+
+const getObservable = (collection: AngularFirestoreCollection<Task>) => {
+  const subject = new BehaviorSubject<Task[]>([]);
+  collection.valueChanges({ idField: 'id' }).subscribe((val: Task[]) => {
+    subject.next(val);
+  });
+  return subject;
+};
 
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css']
+  styleUrls: ['./app.component.css'],
 })
 export class AppComponent {
-  todo: Task[] = [
-    {
-      title: 'Buy milk',
-      description: 'Go to the store and buy milk'
-    },
-    {
-      title: 'Create a Kanban app',
-      description: 'Using Firebase and Angular create a Kanban app!'
-    }
-  ];
-  inProgress: Task[] = [];
-  done: Task[] = [];
+  todo$: Observable<Task[]> = getObservable(this.afs.collection<Task>('todo'));
+  inProgress$: Observable<Task[]> = getObservable(this.afs.collection<Task>('inProgress'));
+  done$: Observable<Task[]> = getObservable(this.afs.collection<Task>('done'));
 
-  constructor(private dialog: MatDialog) {}
+  constructor(private dialog: MatDialog, private afs: AngularFirestore) {}
 
   newTask(): void {
     const dialogRef = this.dialog.open(TaskDialogComponent, {
@@ -34,11 +42,11 @@ export class AppComponent {
     });
     dialogRef
       .afterClosed()
-      .subscribe((result: TaskDialogResult|undefined) => {
+      .subscribe((result: TaskDialogResult | undefined) => {
         if (!result) {
           return;
         }
-        this.todo.push(result.task);
+        this.afs.collection('todo').add(result.task);
       });
   }
 
@@ -50,30 +58,37 @@ export class AppComponent {
         enableDelete: true,
       },
     });
-    dialogRef.afterClosed().subscribe((result: TaskDialogResult|undefined) => {
-      if (!result) {
-        return;
-      }
-      const dataList = this[list];
-      const taskIndex = dataList.indexOf(task);
-      if (result.delete) {
-        dataList.splice(taskIndex, 1);
-      } else {
-        dataList[taskIndex] = task;
-      }
-    });
+    dialogRef
+      .afterClosed()
+      .subscribe((result: TaskDialogResult | undefined) => {
+        if (!result) {
+          return;
+        }
+        if (result.delete) {
+          this.afs.collection(list).doc(task.id).delete();
+        } else {
+          this.afs.collection(list).doc(task.id).update(task);
+        }
+      });
   }
 
-  drop(event: CdkDragDrop<Task[]>): void {
-    if (event.previousContainer === event.container) {
+  drop(event: CdkDragDrop<Task[] | null>): void {
+    const previousContainer = event.previousContainer as CdkDropList<Task[]>;
+    const container = event.container as CdkDropList<Task[]>;
+    if (previousContainer === container) {
       return;
     }
-    if (!event.container.data || !event.previousContainer.data) {
-      return;
-    }
+    const item = previousContainer.data[event.previousIndex];
+    this.afs.firestore.runTransaction(() => {
+      const promise = Promise.all([
+        this.afs.collection(previousContainer.id).doc(item.id).delete(),
+        this.afs.collection(container.id).add(item),
+      ]);
+      return promise;
+    });
     transferArrayItem(
-      event.previousContainer.data,
-      event.container.data,
+      previousContainer.data,
+      container.data,
       event.previousIndex,
       event.currentIndex
     );
